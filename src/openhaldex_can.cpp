@@ -31,9 +31,6 @@ void printCanFrame(const char *prefix, const can_frame &frame)
 void processChassisFrame(can_frame &frame)
 {
   lastCANChassisTick = millis();
-  
-  printCanFrame("RX Body", frame);
-
   switch (frame.id)
   {
   case MOTOR1_ID:
@@ -118,8 +115,9 @@ void parseCAN_chs(void *arg)
     // New message from ISR
     if (body_can.can_interface->readMsgBuf(&frame.id, &frame.len, frame.data.bytes) == CAN_OK)
     {
+      printCanFrame("RX Body - Original", frame);
       processChassisFrame(frame);
-      printCanFrame("RX Body", frame);
+      printCanFrame("RX Body - Modified", frame);
       xQueueSendToBack(haldex_can.outbox, &frame, 0);
     }
 
@@ -144,8 +142,6 @@ void IRAM_ATTR parseCan_hdx_handler()
 {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   vTaskNotifyGiveFromISR(haldex_can.comms_task, &xHigherPriorityTaskWoken);
-
-  Serial.println("got message HDX");
   portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 }
 
@@ -164,8 +160,9 @@ void parseCAN_hdx(void *arg)
     // New Haldex message available
     if (haldex_can.can_interface->readMsgBuf(&frame.id, &frame.len, frame.data.bytes) == CAN_OK)
     {
+      printCanFrame("RX Haldex - Original", frame);
       processHaldexFrame(frame);
-      printCanFrame("RX Haldex", frame);
+      printCanFrame("RX Haldex - Modified", frame);
       xQueueSendToBack(body_can.outbox, &frame, 0);
     }
 

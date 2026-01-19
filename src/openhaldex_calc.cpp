@@ -78,6 +78,8 @@ float get_lock_target_adjustment()
   case MODE_CUSTOM:
     if (int(ped_value) >= state.ped_threshold || state.ped_threshold == 0 || vehicle_speed < disableSpeed || state.mode_override)
     {
+      //This is wrong i guess
+      //I want only adjustament not the value
       return getLockForSpeed(state.custom_mode, vehicle_speed);
     }
     return 0;
