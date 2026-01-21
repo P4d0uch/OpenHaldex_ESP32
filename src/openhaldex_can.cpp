@@ -1,7 +1,7 @@
 #include "openhaldex.h"
 
 // Debug printing (disable in production by commenting out)
-#define DEBUG_PRINT_ENABLED
+//#define DEBUG_PRINT_ENABLED
 #ifdef DEBUG_PRINT_ENABLED
 #define DEBUG_PRINT(fmt, ...) Serial.printf(fmt, ##__VA_ARGS__)
 #else
@@ -10,6 +10,15 @@
   {                           \
   } while (0)
 #endif
+
+/**
+ * Saves the frame to its history array
+ */
+void addToHistory(can_frame *history, uint8_t *index, const can_frame &frame)
+{
+    history[*index] = frame;
+    *index = (*index + 1) % 200;
+}
 
 /**
  * Print CAN frame data for debugging
@@ -41,7 +50,7 @@ void processChassisFrame(can_frame &frame)
     break;
 
   case MOTOR2_ID:
-    // Speed is in km/h directly, byte 3 
+    // Speed is in km/h directly, byte 3
     vehicle_speed = frame.data.bytes[3] * 128 / 100;
     DEBUG_PRINT("Vehicle speed: %d km/h\n", vehicle_speed);
     break;
@@ -68,13 +77,12 @@ void processHaldexFrame(can_frame &frame)
   lastCANHaldexTick = millis();
 
   // Just for safety and testing
-  if (frame.id == 0)
+  if (frame.id != HALDEX_ID)
     return;
 
   // Scale engagement :127 is when stationary
   received_haldex_engagement_raw = frame.data.bytes[1];
   haldex_engagement = map(received_haldex_engagement_raw, 127, 198, 0, 100);
-    
 
   // Decode state byte
   received_haldex_state = frame.data.bytes[0];
@@ -92,7 +100,6 @@ void processHaldexFrame(can_frame &frame)
  * CAN Chassis interrupt handler
  * Just signal the main task to start processing new frame
  */
- 
 void IRAM_ATTR parseCan_chs_handler()
 {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -108,29 +115,47 @@ void IRAM_ATTR parseCan_chs_handler()
 void parseCAN_chs(void *arg)
 {
   can_frame frame;
+ 
   while (1)
   {
+     
     // Wait for interrupt signal OR timeout every 10 ms
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10));
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+    long start_time = micros();
     // New message from ISR
     if (body_can.can_interface->readMsgBuf(&frame.id, &frame.len, frame.data.bytes) == CAN_OK)
     {
-      printCanFrame("RX Body - Original", frame);
+      //Serial.printf("read took %uus\n", micros() - start_time);
+      //printCanFrame("RX Body - Original", frame);
+      //Serial.printf("print %uus\n", micros() - start_time);
+      //Save frame to history
+      addToHistory(body_inbox_history,&body_inbox_history_index,frame);
+     // Serial.printf("add to history %uus\n", micros() - start_time);
       processChassisFrame(frame);
-      printCanFrame("RX Body - Modified", frame);
+      //Serial.printf("process %uus\n", micros() - start_time);
+      //printCanFrame("RX Body - Modified", frame);
+      //Serial.printf("print %uus\n", micros() - start_time);
       xQueueSendToBack(haldex_can.outbox, &frame, 0);
+      //Serial.printf("queue send %uus\n", micros() - start_time);
+
+      //Save frame to history
+      addToHistory(haldex_outbox_history,&haldex_outbox_history_index,frame);
+      //Serial.printf("history 2  %uus\n", micros() - start_time);
     }
 
     // Always check the outbox periodically
     while (xQueueReceive(body_can.outbox, &frame, 0) == pdTRUE && !replayWithoutSending)
     {
+      //Serial.printf("queue read took %uus\n", micros() - start_time);
       byte result = body_can.can_interface->sendMsgBuf(frame.id, frame.len, frame.data.bytes);
+      //Serial.printf("send took %uus\n", micros() - start_time);
       if (result != CAN_OK)
       {
-        DEBUG_PRINT("[%03X]: TX NOK Body (%d)\n", frame.id, result);
+        //DEBUG_PRINT("[%03X]: TX NOK Body (%d)\n", frame.id, result);
         xQueueSendToBack(body_can.outbox, &frame, 0); // requeue for retry
       }
     }
+    Serial.printf("whole process took %uus\n", micros() - start_time);
   }
 }
 
@@ -156,14 +181,15 @@ void parseCAN_hdx(void *arg)
   while (1)
   {
     // Wait for interrupt signal OR timeout every 10 ms
-    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(10));
+    ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
     // New Haldex message available
     if (haldex_can.can_interface->readMsgBuf(&frame.id, &frame.len, frame.data.bytes) == CAN_OK)
     {
-      printCanFrame("RX Haldex - Original", frame);
+      addToHistory(haldex_inbox_history,&haldex_inbox_history_index,frame);
+      printCanFrame("",frame);
       processHaldexFrame(frame);
-      printCanFrame("RX Haldex - Modified", frame);
-      xQueueSendToBack(body_can.outbox, &frame, 0);
+      //xQueueSendToBack(body_can.outbox, &frame, 0);
+      //addToHistory(body_outbox_history,&body_outbox_history_index,frame);
     }
 
     // Always check the outbox periodically
@@ -172,7 +198,7 @@ void parseCAN_hdx(void *arg)
       byte result = haldex_can.can_interface->sendMsgBuf(frame.id, frame.len, frame.data.bytes);
       if (result != CAN_OK)
       {
-        DEBUG_PRINT("[%03X]: TX NOK Haldex (%d)\n", frame.id, result);
+        //DEBUG_PRINT("[%03X]: TX NOK Haldex (%d)\n", frame.id, result);
         xQueueSendToBack(haldex_can.outbox, &frame, 0);
       }
     }
@@ -247,8 +273,7 @@ void send_test_data(void *params)
 
     frame.data.bytes[6] = appliedTorque; // was 0x00
     frame.data.bytes[7] = 0x00;          // drivers moment (%): 0.39*(0xF0) = 93.6%  (make FE?) - ignored
-    xQueueSendToBack(haldex_can.outbox, &frame, portMAX_DELAY);
-    xQueueSendToBack(body_can.outbox, &frame, portMAX_DELAY);
+    xQueueSendToBack(body_can.inbox, &frame, portMAX_DELAY);
 
     frame.id = MOTOR3_ID;       // 0x1A0
     frame.len = 8;              // DLC 8
@@ -260,8 +285,7 @@ void send_test_data(void *params)
     frame.data.bytes[5] = 0x00; // wheel command torque (0 = positive, 1 = negative).  If SY_ASG - ignored
     frame.data.bytes[6] = 0x00; // req. torque.  If SY_ASG - ignored
     frame.data.bytes[7] = 0xFE; // throttle angle (100%), ignored
-    xQueueSendToBack(haldex_can.outbox, &frame, portMAX_DELAY);
-    xQueueSendToBack(body_can.outbox, &frame, portMAX_DELAY);
+    xQueueSendToBack(body_can.inbox, &frame, portMAX_DELAY);
 
     frame.id = BRAKES1_ID;                                             // 0x1A0
     frame.len = 8;                                                     // DLC 8
@@ -278,8 +302,7 @@ void send_test_data(void *params)
       BRAKES1_counter = 0; // 0
     }
 
-    xQueueSendToBack(haldex_can.outbox, &frame, portMAX_DELAY);
-    xQueueSendToBack(body_can.outbox, &frame, portMAX_DELAY);
+    xQueueSendToBack(body_can.inbox, &frame, portMAX_DELAY);
 
     /*
     Bremse 3 has massive effect - deviation between front/rear = block 011 'rpm changing'
@@ -297,9 +320,9 @@ void send_test_data(void *params)
     frame.data.bytes[5] = 0x0A;                                        // high byte, LEFT Rear // 254+10? (5050 returns 0xA)
     frame.data.bytes[6] = 0x00;                                        // low byte, RIGHT Rear
     frame.data.bytes[7] = 0x0A;                                        // high byte, RIGHT Rear  // 254+10?
-    xQueueSendToBack(haldex_can.outbox, &frame, portMAX_DELAY);
-    xQueueSendToBack(body_can.outbox, &frame, portMAX_DELAY);
+    xQueueSendToBack(body_can.inbox, &frame, portMAX_DELAY);
 
     vTaskDelay(50 / portTICK_PERIOD_MS); // wait 200ms before sending next set of test data
   }
 }
+

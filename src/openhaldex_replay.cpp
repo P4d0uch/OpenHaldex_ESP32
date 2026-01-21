@@ -108,20 +108,25 @@ void handleReplayInput(const String &line) {
 void replayTask(void *param) {
     Serial.println("Replay task active. Type STOP to exit.");
     while (replayActive) {
+        //Serial.println("Replay while\n");
         for (int i = 0; i < replayMsgCount; i++) {
             if (strcmp(replayBus[i], "BI") == 0) {
                 replayWithoutSending = true;
-                xQueueSendToBack(body_can.inbox, &replayMessages[i], portMAX_DELAY);
+                xQueueSendToBack(body_can.inbox, &replayMessages[i], 0);
+                addToHistory(body_inbox_history,&body_inbox_history_index,replayMessages[i]);
             } else if (strcmp(replayBus[i], "HI") == 0) {
                 replayWithoutSending = true;
-                xQueueSendToBack(haldex_can.inbox, &replayMessages[i], portMAX_DELAY);
+                xQueueSendToBack(haldex_can.inbox, &replayMessages[i], 0);
+                addToHistory(haldex_inbox_history,&haldex_inbox_history_index,replayMessages[i]);
             }
             else if (strcmp(replayBus[i], "BO") == 0) {
                 replayWithoutSending = true;
-               xQueueSendToBack(body_can.outbox, &replayMessages[i], portMAX_DELAY);
+               xQueueSendToBack(body_can.outbox, &replayMessages[i], 0);
+               addToHistory(body_outbox_history,&body_outbox_history_index,replayMessages[i]);
             } else if (strcmp(replayBus[i], "HO") == 0) {
                 replayWithoutSending = true;
-                xQueueSendToBack(haldex_can.outbox, &replayMessages[i], portMAX_DELAY);
+                xQueueSendToBack(haldex_can.outbox, &replayMessages[i], 0);
+                addToHistory(haldex_outbox_history,&haldex_outbox_history_index,replayMessages[i]);
             }
             else if (strcmp(replayBus[i], "BS") == 0) {
                 replayWithoutSending = false;

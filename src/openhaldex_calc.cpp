@@ -144,8 +144,11 @@ void modifyHaldexFrame(can_frame &frameToModify)
   // Each frame has a different modification
   switch (frameToModify.id)
   {
+  
       case MOTOR1_ID:
-        frameToModify.data.bytes[0] = 0x00;                                         // various individual bits ('space gas', driving pedal, kick down, clutch, timeout brake, brake intervention, drinks-torque intervention?) was 0x01 - ignored
+    
+        frameToModify.data.bytes[0] = 0x08;   //When idle or off this is 0x09, gas pedal 0x08, brake 0x01      
+        // ?, ?, ?, ?, brake, ?, ?, gas pedal                             
         frameToModify.data.bytes[1] = get_lock_target_adjusted_value(0xFE, false);  // rpm low byte
         frameToModify.data.bytes[2] = 0x21;                                         // rpm high byte
         frameToModify.data.bytes[3] = get_lock_target_adjusted_value(0x4E, false);  // set RPM to a value so the pre-charge pump runs

@@ -58,6 +58,14 @@ extern bool replayActive;
 extern bool replayWithoutSending;
 extern int replayMsgCount;
 
+extern can_frame haldex_inbox_history[200];
+extern can_frame haldex_outbox_history[200];
+extern can_frame body_inbox_history[200];
+extern can_frame body_outbox_history[200];
+extern uint8_t haldex_inbox_history_index;
+extern uint8_t haldex_outbox_history_index;
+extern uint8_t body_inbox_history_index;
+extern uint8_t body_outbox_history_index;
 
 
 #ifdef CAN_TEST_DATA
@@ -103,4 +111,5 @@ extern void saveCustomMode();
 extern void loadCustomMode();
 extern void printCustomMode();
 extern void showHaldexState(void *arg);
+extern void addToHistory(can_frame *history, uint8_t *index, const can_frame &frame);
 extern AsyncWebServer server;

@@ -8,11 +8,13 @@ AsyncWebServer server(80);
  */
 void setUpUI()
 {
+    
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send_P(200, "text/html", index_html); });
 
     server.on("/custom", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send_P(200, "text/html", custom_html); });
+
 
     // API: Get status - All status variables to pass to UI
     server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -70,6 +72,10 @@ void setUpUI()
         serializeJson(doc, response);
         request->send(200, "application/json", response); });
 
+
+    server.on("/canlog", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/html", canlog_html); });
+
     // API: Set custom mode - Save and apply the custom lock
     server.on("/api/setCustomMode", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total)
               {
@@ -87,9 +93,45 @@ void setUpUI()
                 idx++;
             }
             
-            Serial.printf("Custom mode saved with %d points\n", state.custom_mode.lockpoint_count);
+
 			saveCustomMode();
             request->send(200, "application/json", "{\"success\":true}"); });
+    
+
+    // API: Get can history and send its data
+    server.on("/api/canHistory", HTTP_GET, [](AsyncWebServerRequest *request)
+              {
+            StaticJsonDocument<4096> doc;
+            JsonArray haldex_in = doc.createNestedArray("haldex_inbox");
+            JsonArray haldex_out = doc.createNestedArray("haldex_outbox");
+            JsonArray body_in = doc.createNestedArray("body_inbox");
+            JsonArray body_out = doc.createNestedArray("body_outbox");
+
+            auto addFrame = [](JsonArray arr, const can_frame &f) {
+                JsonObject obj = arr.createNestedObject();
+                obj["id"] = f.id;
+                obj["len"] = f.len;
+
+                char dataStr[3 * 8 + 1] = {0};
+                for (byte i = 0; i < f.len; i++) {
+                char tmp[4];
+                sprintf(tmp, "%02X ", f.data.bytes[i]);
+                strcat(dataStr, tmp);
+                
+                }
+                obj["data"] = dataStr;
+            };
+
+            for (int i = 0; i < 200; i++) {
+                addFrame(haldex_in, haldex_inbox_history[i]);
+                addFrame(haldex_out, haldex_outbox_history[i]);
+                addFrame(body_in, body_inbox_history[i]);
+                addFrame(body_out, body_outbox_history[i]);
+            }
+
+            String response;
+            serializeJson(doc, response);
+            request->send(200, "application/json", response); });
 
     server.begin();
     Serial.println("Web server started!");

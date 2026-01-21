@@ -175,7 +175,8 @@ const char index_html[] PROGMEM = R"rawliteral(
             <button class="control-button" onclick="setMode(2)">75/25 Mode</button>
             <button class="control-button" onclick="setMode(3)">50/50 Mode</button>
             <button class="control-button" onclick="setMode(4)">Custom Mode</button>
-            <button class="control-button next-button" onclick="location.href='/custom'">Custom Mode Setup →</button>
+            <button class="control-button next-button" onclick="location.href='/custom'">Custom Mode Setup</button>
+            <button class="control-button next-button" onclick="location.href='/canlog'">CAN history</button>
         </div>
     </div>
     <script>
@@ -567,6 +568,155 @@ const char custom_html[] PROGMEM = R"rawliteral(
         initChart();
         loadConfig();
     </script>
+</body>
+</html>
+)rawliteral";
+
+const char canlog_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CAN Frame History</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #111;
+      color: #eee;
+      padding: 20px;
+    }
+    h1 {
+      text-align: center;
+      color: #4facfe;
+      margin-bottom: 20px;
+    }
+    .controls {
+      text-align: center;
+      margin-bottom: 15px;
+    }
+    .toggle-btn {
+      background: #4facfe;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 20px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .section {
+      margin-bottom: 30px;
+      max-height: 250px;
+      overflow-y: auto;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 5px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #222;
+    }
+    th, td {
+      padding: 6px 8px;
+      border-bottom: 1px solid #333;
+      text-align: left;
+      font-family: monospace;
+    }
+    th {
+      background: #333;
+      color: #00f2fe;
+      position: sticky;
+      top: 0;
+    }
+    tr:hover {
+      background: #2a2a2a;
+    }
+    tr.new {
+      background: #006600 !important;
+      color: #fff;
+    }
+    .back {
+      display: inline-block;
+      margin-bottom: 15px;
+      background: #4facfe;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back">← Back</a>
+  <h1>📡 CAN Frame History</h1>
+  <div class="controls">
+    <button id="toggleBtn" class="toggle-btn">Pause Updates</button>
+  </div>
+  <div id="content"></div>
+
+  <script>
+    let autoUpdate = true;
+    let intervalId = null;
+
+    async function loadData() {
+      const res = await fetch('/api/canHistory');
+      const data = await res.json();
+
+      const sections = [
+        ["Haldex Inbox", data.haldex_inbox],
+        ["Haldex Outbox", data.haldex_outbox],
+        ["Body Inbox", data.body_inbox],
+        ["Body Outbox", data.body_outbox],
+      ];
+
+      const html = sections.map(([title, frames]) => {
+        return `
+        <div class="section">
+          <h2>${title}</h2>
+          <table>
+            <tr><th>#</th><th>ID</th><th>Data</th></tr>
+            ${frames.map((f, i) => `
+              <tr class="${i === frames.length - 1 ? 'new' : ''}">
+                <td>${i+1}</td>
+                <td>0x${f.id.toString(16).toUpperCase().padStart(3, '0')}</td>
+                <td>${f.data}</td>
+              </tr>
+            `).join('')}
+          </table>
+        </div>`;
+      }).join('');
+
+      document.getElementById('content').innerHTML = html;
+    }
+
+    function startUpdates() {
+      if (!intervalId) {
+        intervalId = setInterval(loadData, 500);
+      }
+      autoUpdate = true;
+      document.getElementById('toggleBtn').textContent = "Pause Updates";
+    }
+
+    function stopUpdates() {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+      autoUpdate = false;
+      document.getElementById('toggleBtn').textContent = "Resume Updates";
+    }
+
+    document.getElementById('toggleBtn').addEventListener('click', () => {
+      if (autoUpdate) stopUpdates();
+      else startUpdates();
+    });
+
+    // Start auto-updating by default
+    startUpdates();
+    loadData();
+  </script>
 </body>
 </html>
 )rawliteral";

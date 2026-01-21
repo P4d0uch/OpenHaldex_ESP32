@@ -1,9 +1,5 @@
 #include "openhaldex.h"
 
-#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
-#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
-#endif
-
 // --- Global Variables ---
 // Initialize the variables
 openhaldex_state state;
@@ -41,6 +37,16 @@ TaskHandle_t replay_task = NULL;
 bool replayActive = false;
 bool replayWithoutSending = false;
 
+uint8_t haldex_inbox_history_index = 0;
+uint8_t haldex_outbox_history_index = 0;
+uint8_t body_inbox_history_index = 0;
+uint8_t body_outbox_history_index= 0;
+
+can_frame haldex_inbox_history[200] = {0};
+can_frame haldex_outbox_history[200] = {0};
+can_frame body_inbox_history[200] = {0};
+can_frame body_outbox_history[200] = {0};
+
 // Define the main CAN structure
 can_s body_can = {
     0,                            // CAN status
@@ -48,7 +54,7 @@ can_s body_can = {
     new MCP_CAN(BODY_CAN_CS_PIN), // CAN interface
     NULL,                         // Comms task
     NULL,                         // Outbox
-    NULL,
+    NULL,                         // Inbox
     false, // Inited flag                       // Name
 };
 
@@ -82,9 +88,13 @@ void setup()
     body_can.spi_interface = new SPIClass(VSPI);
     haldex_can.spi_interface = new SPIClass(HSPI);
 
+        body_can.spi_interface->setFrequency(8000000);
+    haldex_can.spi_interface->setFrequency(8000000);
+
     // Start SPI bus
     body_can.spi_interface->begin(BODY_CAN_SCK_PIN, BODY_CAN_SO_PIN, BODY_CAN_SI_PIN, BODY_CAN_CS_PIN);
     haldex_can.spi_interface->begin(HALDEX_CAN_SCK_PIN, HALDEX_CAN_SO_PIN, HALDEX_CAN_SI_PIN, HALDEX_CAN_CS_PIN);
+
     body_can.can_interface->setSpiInstance(body_can.spi_interface);
     haldex_can.can_interface->setSpiInstance(haldex_can.spi_interface);
 
@@ -223,15 +233,16 @@ void setup()
         NULL,
         1,
         &serial_command_task,
-        0);
+        1);
 
     Serial.println("Setup done");
+    vTaskDelete(NULL);
 }
 
 void loop()
 {
 
-    delay(100);
+    delay(350);
 }
 
 void showHaldexState(void *params)
