@@ -661,34 +661,46 @@ const char canlog_html[] PROGMEM = R"rawliteral(
     let intervalId = null;
 
     async function loadData() {
-      const res = await fetch('/api/canHistory');
-      const data = await res.json();
+      try {
+        // Fetch both endpoints in parallel
+        const [haldexRes, bodyRes] = await Promise.all([
+          fetch('/api/haldexHistory'),
+          fetch('/api/bodyHistory')
+        ]);
+        const haldexData = await haldexRes.json();
+        const bodyData = await bodyRes.json();
 
-      const sections = [
-        ["Haldex Inbox", data.haldex_inbox],
-        ["Haldex Outbox", data.haldex_outbox],
-        ["Body Inbox", data.body_inbox],
-        ["Body Outbox", data.body_outbox],
-      ];
+        const sections = [
+          ["Haldex Inbox", haldexData.haldex_inbox],
+          ["Haldex Outbox", haldexData.haldex_outbox],
+          ["Body Inbox", bodyData.body_inbox],
+          ["Body Outbox", bodyData.body_outbox],
+        ];
 
-      const html = sections.map(([title, frames]) => {
-        return `
-        <div class="section">
-          <h2>${title}</h2>
-          <table>
-            <tr><th>#</th><th>ID</th><th>Data</th></tr>
-            ${frames.map((f, i) => `
-              <tr class="${i === frames.length - 1 ? 'new' : ''}">
-                <td>${i+1}</td>
-                <td>0x${f.id.toString(16).toUpperCase().padStart(3, '0')}</td>
-                <td>${f.data}</td>
-              </tr>
-            `).join('')}
-          </table>
-        </div>`;
-      }).join('');
+        const html = sections.map(([title, frames]) => {
+          if (!frames) return '';
+          return `
+          <div class="section">
+            <h2>${title}</h2>
+            <table>
+              <tr><th>Timestamp</th><th>ID</th><th>Data</th></tr>
+              ${frames.map((f, i) => `
+                <tr class="${i === frames.length - 1 ? 'new' : ''}">
+                  <td>${f.timestamp ?? '—'}</td>
+                  <td>0x${Number(f.id).toString(16).toUpperCase().padStart(3, '0')}</td>
+                  <td>${f.data}</td>
+                </tr>
+              `).join('')}
+            </table>
+          </div>`;
+        }).join('');
 
-      document.getElementById('content').innerHTML = html;
+        document.getElementById('content').innerHTML = html;
+
+      } catch (err) {
+        console.error("Error loading CAN data:", err);
+        document.getElementById('content').innerHTML = "<p style='color:red;text-align:center;'>Error loading CAN data</p>";
+      }
     }
 
     function startUpdates() {

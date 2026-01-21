@@ -30,4 +30,5 @@ typedef struct can_frame{
     uint32_t id;
     byte len;
     BytesUnion data;
+    uint32_t timestamp;
 }can_frame;

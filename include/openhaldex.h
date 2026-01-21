@@ -26,6 +26,7 @@ extern float lock_target;
 extern float ped_value;
 extern byte haldex_engagement;
 
+extern bool modifyFrames;
 extern bool received_report_clutch1;
 extern bool received_report_clutch2;
 extern bool received_temp_protection;

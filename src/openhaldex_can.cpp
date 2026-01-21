@@ -17,6 +17,7 @@
 void addToHistory(can_frame *history, uint8_t *index, const can_frame &frame)
 {
     history[*index] = frame;
+    history[*index].timestamp = millis();
     *index = (*index + 1) % 200;
 }
 
@@ -59,7 +60,10 @@ void processChassisFrame(can_frame &frame)
   // Apply lock data modifications if not in STOCK mode
   if (state.mode != MODE_STOCK)
   {
-    modifyHaldexFrame(frame);
+    if(modifyFrames)
+    {
+        modifyHaldexFrame(frame);
+    }
   }
   else
   {
@@ -125,34 +129,33 @@ void parseCAN_chs(void *arg)
     // New message from ISR
     if (body_can.can_interface->readMsgBuf(&frame.id, &frame.len, frame.data.bytes) == CAN_OK)
     {
-      //Serial.printf("read took %uus\n", micros() - start_time);
-      //printCanFrame("RX Body - Original", frame);
-      //Serial.printf("print %uus\n", micros() - start_time);
-      //Save frame to history
-      addToHistory(body_inbox_history,&body_inbox_history_index,frame);
-     // Serial.printf("add to history %uus\n", micros() - start_time);
-      processChassisFrame(frame);
-      //Serial.printf("process %uus\n", micros() - start_time);
-      //printCanFrame("RX Body - Modified", frame);
-      //Serial.printf("print %uus\n", micros() - start_time);
-      xQueueSendToBack(haldex_can.outbox, &frame, 0);
-      //Serial.printf("queue send %uus\n", micros() - start_time);
 
       //Save frame to history
-      addToHistory(haldex_outbox_history,&haldex_outbox_history_index,frame);
-      //Serial.printf("history 2  %uus\n", micros() - start_time);
+      addToHistory(body_inbox_history,&body_inbox_history_index,frame);
+      if (modifyFrames)
+      {
+        // Do the processing and modification
+        processChassisFrame(frame);
+      
+      }
+      // Send the frame to Haldex
+      xQueueSendToBack(haldex_can.outbox, &frame, 0);
     }
 
     // Always check the outbox periodically
     while (xQueueReceive(body_can.outbox, &frame, 0) == pdTRUE && !replayWithoutSending)
     {
-      //Serial.printf("queue read took %uus\n", micros() - start_time);
+      //Send the data to Haldex
       byte result = body_can.can_interface->sendMsgBuf(frame.id, frame.len, frame.data.bytes);
-      //Serial.printf("send took %uus\n", micros() - start_time);
+
+      //Save to history
+      addToHistory(body_outbox_history,&body_outbox_history_index,frame);
+      
       if (result != CAN_OK)
       {
         //DEBUG_PRINT("[%03X]: TX NOK Body (%d)\n", frame.id, result);
         xQueueSendToBack(body_can.outbox, &frame, 0); // requeue for retry
+        break;
       }
     }
     Serial.printf("whole process took %uus\n", micros() - start_time);
@@ -185,17 +188,24 @@ void parseCAN_hdx(void *arg)
     // New Haldex message available
     if (haldex_can.can_interface->readMsgBuf(&frame.id, &frame.len, frame.data.bytes) == CAN_OK)
     {
+      //Save original frame to history
       addToHistory(haldex_inbox_history,&haldex_inbox_history_index,frame);
-      printCanFrame("",frame);
+      
+      //Haldex frame is processed all the time - no modification
       processHaldexFrame(frame);
-      //xQueueSendToBack(body_can.outbox, &frame, 0);
-      //addToHistory(body_outbox_history,&body_outbox_history_index,frame);
+
+      //Send back to body
+      xQueueSendToBack(body_can.outbox, &frame, 0);
+      
     }
 
     // Always check the outbox periodically
     while (xQueueReceive(haldex_can.outbox, &frame, 0) == pdTRUE && !replayWithoutSending)
     {
+      //First send the message to body
       byte result = haldex_can.can_interface->sendMsgBuf(frame.id, frame.len, frame.data.bytes);
+
+      addToHistory(haldex_outbox_history,&haldex_outbox_history_index,frame);
       if (result != CAN_OK)
       {
         //DEBUG_PRINT("[%03X]: TX NOK Haldex (%d)\n", frame.id, result);

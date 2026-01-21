@@ -40,6 +40,14 @@ void serialCommandTask(void *pvParameters) {
                 else if (inputBuffer == "STOP") {
                     stopReplayMode();
                 }
+                else if (inputBuffer == "STARTMOD")
+                {
+                    modifyFrames=true;
+                }
+                else if (inputBuffer == "STOPMOD")
+                {
+                    modifyFrames=false;
+                }
                 else if (inputBuffer == "STOPTASKS") {
                     stopAllCanTasks();
                 }
@@ -111,29 +119,35 @@ void replayTask(void *param) {
         //Serial.println("Replay while\n");
         for (int i = 0; i < replayMsgCount; i++) {
             if (strcmp(replayBus[i], "BI") == 0) {
+                replayMessages[i].timestamp = millis();
                 replayWithoutSending = true;
                 xQueueSendToBack(body_can.inbox, &replayMessages[i], 0);
                 addToHistory(body_inbox_history,&body_inbox_history_index,replayMessages[i]);
             } else if (strcmp(replayBus[i], "HI") == 0) {
                 replayWithoutSending = true;
+                replayMessages[i].timestamp = millis();
                 xQueueSendToBack(haldex_can.inbox, &replayMessages[i], 0);
                 addToHistory(haldex_inbox_history,&haldex_inbox_history_index,replayMessages[i]);
             }
             else if (strcmp(replayBus[i], "BO") == 0) {
                 replayWithoutSending = true;
+                replayMessages[i].timestamp = millis();
                xQueueSendToBack(body_can.outbox, &replayMessages[i], 0);
                addToHistory(body_outbox_history,&body_outbox_history_index,replayMessages[i]);
             } else if (strcmp(replayBus[i], "HO") == 0) {
                 replayWithoutSending = true;
+                replayMessages[i].timestamp = millis();
                 xQueueSendToBack(haldex_can.outbox, &replayMessages[i], 0);
                 addToHistory(haldex_outbox_history,&haldex_outbox_history_index,replayMessages[i]);
             }
             else if (strcmp(replayBus[i], "BS") == 0) {
                 replayWithoutSending = false;
+                replayMessages[i].timestamp = millis();
                 body_can.can_interface->sendMsgBuf(
                 replayMessages[i].id, replayMessages[i].len, replayMessages[i].data.bytes);
             } else if (strcmp(replayBus[i], "HS") == 0) {
                 replayWithoutSending = false;
+                replayMessages[i].timestamp = millis();
                 haldex_can.can_interface->sendMsgBuf(
                 replayMessages[i].id, replayMessages[i].len, replayMessages[i].data.bytes);
             }

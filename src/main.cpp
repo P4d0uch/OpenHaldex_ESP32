@@ -36,6 +36,7 @@ byte debug_speed = 0;
 TaskHandle_t replay_task = NULL;
 bool replayActive = false;
 bool replayWithoutSending = false;
+bool modifyFrames = true;
 
 uint8_t haldex_inbox_history_index = 0;
 uint8_t haldex_outbox_history_index = 0;
